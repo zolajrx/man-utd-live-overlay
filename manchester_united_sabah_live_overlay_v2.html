@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manchester United - Sabah FK | Live Score</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}
+body{font-family:Arial,sans-serif}
+.wrap{width:100%;height:100%;display:flex;align-items:flex-start;justify-content:center}
+.card{margin-top:10px;background:rgba(10,10,12,.94);border:1px solid rgba(255,255,255,.14);
+border-radius:14px;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.35);padding:12px 18px;min-width:430px}
+.title{text-align:center;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:.65;margin-bottom:8px}
+.score{display:flex;align-items:center;justify-content:center;gap:18px}
+.team{width:125px;text-align:center;font-size:15px;font-weight:700}
+.crest{width:38px;height:38px;object-fit:contain;display:block;margin:0 auto 5px}
+.numbers{font-size:28px;font-weight:800;white-space:nowrap}
+.meta{text-align:center;font-size:12px;opacity:.7;margin-top:7px}
+.note{text-align:center;font-size:9px;opacity:.35;margin-top:7px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="title">UEFA CHAMPIONS LEAGUE • LEAGUE PHASE</div>
+    <div class="score">
+      <div class="team">
+        <img class="crest" src="https://a.espncdn.com/i/teamlogos/soccer/500/360.png">
+        Manchester United
+      </div>
+      <div>
+        <div class="numbers"><span id="home">-</span> : <span id="away">-</span></div>
+        <div class="meta" id="status">Učitavanje...</div>
+      </div>
+      <div class="team">
+        <img class="crest" src="https://assets.footylogos.com/logos/sabah-fk/sabah-fk-logo-footylogos.svg">
+        Sabah FK
+      </div>
+    </div>
+    <div class="note">Live data • automatsko osvežavanje</div>
+  </div>
+</div>
+<script>
+const EVENT_ID="74165900";
+async function update(){
+  try{
+    const u="https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/summary?event="+EVENT_ID;
+    const d=await fetch(u,{cache:"no-store"}).then(r=>r.json());
+    const c=d.header.competitions[0], s=c.competitors;
+    const h=s.find(x=>x.homeAway==="home"), a=s.find(x=>x.homeAway==="away");
+    document.getElementById("home").textContent=h?.score ?? "-";
+    document.getElementById("away").textContent=a?.score ?? "-";
+    let st=d.header.competitions[0].status;
+    let text=st?.type?.shortDetail || st?.type?.detail || "Uskoro";
+    if(st?.displayClock && st?.type?.state==="in") text=st.displayClock;
+    document.getElementById("status").textContent=text;
+  }catch(e){
+    document.getElementById("status").textContent="Čekam podatke...";
+  }
+}
+update(); setInterval(update,15000);
+</script>
+</body>
+</html>
