@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Football Auto Test Overlay</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;font-family:Arial,Helvetica,sans-serif;background:transparent;color:#fff}
+  body{display:flex;justify-content:center;align-items:flex-start;padding:28px 0}
+  .wrap{
+    width:min(820px,94vw); min-height:890px; border-radius:18px;
+    padding:20px 22px 28px;
+    background:linear-gradient(180deg,rgba(8,8,12,.92),rgba(16,16,22,.90));
+    border:1px solid rgba(255,255,255,.16);
+    box-shadow:0 12px 40px rgba(0,0,0,.25);
+  }
+  .top{text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:#ddd}
+  .live{color:#ff3b3b}.dot{display:inline-block;width:8px;height:8px;background:#ff2f2f;border-radius:50%;margin:0 6px;box-shadow:0 0 10px #ff2f2f}
+  .league{opacity:.7;font-weight:700}
+  .scoreline{display:grid;grid-template-columns:1fr 170px 1fr;gap:14px;align-items:center;margin-top:20px}
+  .team{text-align:center;font-size:22px;font-weight:800}
+  .crest{width:72px;height:72px;object-fit:contain;display:block;margin:0 auto 10px}
+  .score{text-align:center}
+  .numbers{font-size:46px;font-weight:900;line-height:1}
+  .status{margin-top:8px;font-size:14px;font-weight:800;color:#ff4d4d}
+  .substatus{margin-top:5px;font-size:11px;color:#aaa}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}
+  .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:13px}
+  .card h3{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#aaa}
+  .stat{display:grid;grid-template-columns:1fr 70px 1fr;gap:8px;align-items:center;margin:8px 0;font-size:13px;font-weight:700}
+  .stat span:nth-child(2){text-align:center;color:#ddd}
+  .stat span:last-child{text-align:right}
+  .events{margin-top:12px}
+  .event{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px}
+  .event:last-child{border-bottom:0}
+  .muted{color:#888}
+  .error{color:#ff6b6b}
+  .footer{margin-top:18px;text-align:center;font-size:10px;color:#777}
+  @media(max-width:620px){
+    .scoreline{grid-template-columns:1fr 110px 1fr}.team{font-size:16px}.numbers{font-size:36px}.crest{width:58px;height:58px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="league" id="league">FOOTBALL • AUTO LIVE TEST</span> <span class="dot"></span><span class="live">AUTO DATA</span></div>
+
+  <div class="scoreline">
+    <div class="team">
+      <img id="homeLogo" class="crest" alt="">
+      <div id="homeName">Tražim live utakmicu...</div>
+    </div>
+    <div class="score">
+      <div class="numbers"><span id="homeScore">-</span> : <span id="awayScore">-</span></div>
+      <div id="status" class="status">SKENIRAM LIVE FEED</div>
+      <div id="clock" class="substatus">Sofascore • automatski</div>
+    </div>
+    <div class="team">
+      <img id="awayLogo" class="crest" alt="">
+      <div id="awayName">Čekam podatke...</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Statistika</h3>
+      <div class="stat"><span>Posed</span><span>—</span><span id="possession">—</span></div>
+      <div class="stat"><span>Šutevi</span><span id="shots">—</span><span>—</span></div>
+      <div class="stat"><span>U okvir</span><span id="onTarget">—</span><span>—</span></div>
+      <div class="stat"><span>Korneri</span><span id="corners">—</span><span>—</span></div>
+      <div class="stat"><span>Žuti</span><span id="yellow">—</span><span>—</span></div>
+    </div>
+
+    <div class="card">
+      <h3>Feed status</h3>
+      <div id="feedStatus" class="muted">Povezivanje...</div>
+      <div style="margin-top:10px;font-size:11px;color:#888">
+        Ovaj test automatski bira prvu stvarnu fudbalsku utakmicu koju Sofascore označi kao LIVE.
+      </div>
+    </div>
+  </div>
+
+  <div class="card events">
+    <h3>Live događaji</h3>
+    <div id="events"><div class="muted">Čekam live događaje...</div></div>
+  </div>
+
+  <div class="footer">Automatsko osvežavanje • 10 sekundi • bez ručnog unosa utakmice</div>
+</div>
+
+<script>
+const LIVE_URL = "https://www.sofascore.com/api/v1/sport/football/events/live";
+let currentEventId = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+
+function setLogo(el, team){
+  if(!team?.id){ el.removeAttribute("src"); return; }
+  el.src = `https://api.sofascore.com/api/v1/team/${team.id}/image`;
+}
+
+function statValue(stats, keys){
+  for(const k of keys){
+    const x = stats?.find(s => s.name === k || s.key === k);
+    if(x){
+      if(x.home !== undefined) return [x.home, x.away];
+      if(x.homeValue !== undefined) return [x.homeValue, x.awayValue];
+    }
+  }
+  return null;
+}
+
+async function getJSON(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP " + r.status);
+  return await r.json();
+}
+
+async function findLive(){
+  const data = await getJSON(LIVE_URL);
+  const events = (data.events || []).filter(e => {
+    const sport = (e.sport?.slug || "").toLowerCase();
+    const status = (e.status?.type || "").toLowerCase();
+    return sport === "football" && ["inprogress","live"].includes(status);
+  });
+
+  // Prefer normal football rather than eFootball/simulated competitions.
+  const preferred = events.find(e => {
+    const name = `${e.homeTeam?.name || ""} ${e.awayTeam?.name || ""} ${e.tournament?.name || ""}`.toLowerCase();
+    return !name.includes("esoccer") && !name.includes("efootball") && !name.includes("simulated");
+  });
+
+  return preferred || events[0] || null;
+}
+
+async function loadMatch(event){
+  currentEventId = event.id;
+  const home = event.homeTeam || {};
+  const away = event.awayTeam || {};
+  $("homeName").textContent = home.name || "Home";
+  $("awayName").textContent = away.name || "Away";
+  setLogo($("homeLogo"), home);
+  setLogo($("awayLogo"), away);
+
+  $("homeScore").textContent = event.homeScore?.current ?? event.homeScore?.display ?? 0;
+  $("awayScore").textContent = event.awayScore?.current ?? event.awayScore?.display ?? 0;
+  $("league").textContent = event.tournament?.name || "FOOTBALL • LIVE";
+  $("status").textContent = event.status?.description || "LIVE";
+  $("clock").textContent = event.status?.type === "inprogress"
+    ? `LIVE • ${event.status?.description || ""}`
+    : "LIVE";
+
+  $("feedStatus").innerHTML = `LIVE meč pronađen • ID <b>${event.id}</b><br><span class="muted">${esc(home.name)} — ${esc(away.name)}</span>`;
+
+  try{
+    const [statsData, incData] = await Promise.all([
+      getJSON(`https://www.sofascore.com/api/v1/event/${event.id}/statistics`),
+      getJSON(`https://www.sofascore.com/api/v1/event/${event.id}/incidents`)
+    ]);
+
+    const periods = statsData.statistics || [];
+    const allStats = periods.flatMap(p => p.groups || []).flatMap(g => g.statisticsItems || []);
+    const possession = statValue(allStats, ["Ball possession","Possession"]);
+    const shots = statValue(allStats, ["Total shots","Shots"]);
+    const onTarget = statValue(allStats, ["Shots on target","Shots on goal"]);
+    const corners = statValue(allStats, ["Corner kicks","Corners"]);
+    const yellow = statValue(allStats, ["Yellow cards","Yellow card"]);
+
+    $("possession").textContent = possession ? `${possession[0]}%` : "—";
+    $("shots").textContent = shots ? `${shots[0]} / ${shots[1]}` : "—";
+    $("onTarget").textContent = onTarget ? `${onTarget[0]} / ${onTarget[1]}` : "—";
+    $("corners").textContent = corners ? `${corners[0]} / ${corners[1]}` : "—";
+    $("yellow").textContent = yellow ? `${yellow[0]} / ${yellow[1]}` : "—";
+
+    const incidents = (incData.incidents || []).slice(0,10);
+    $("events").innerHTML = incidents.length
+      ? incidents.map(i => {
+          const time = i.time ? `${i.time}'` : "";
+          const player = i.player?.name ? ` — ${esc(i.player.name)}` : "";
+          let icon = "•";
+          if(i.incidentType === "goal") icon = "⚽";
+          else if(i.incidentType === "card") icon = i.incidentClass === "yellow" ? "🟨" : "🟥";
+          else if(i.incidentType === "substitution") icon = "🔄";
+          return `<div class="event">${icon} <b>${time}</b> ${esc(i.isHome ? home.name : away.name)}${player}</div>`;
+        }).join("")
+      : '<div class="muted">Nema događaja u feedu.</div>';
+
+  }catch(err){
+    $("feedStatus").innerHTML += `<br><span class="error">Statistika/događaji: ${esc(err.message)}</span>`;
+  }
+}
+
+async function tick(){
+  try{
+    const event = await findLive();
+    if(!event){
+      $("status").textContent = "NEMA LIVE UTAKMICE";
+      $("feedStatus").innerHTML = '<span class="muted">Sofascore trenutno ne vraća fudbalski meč sa LIVE statusom. Automatski pokušavam ponovo...</span>';
+      $("clock").textContent = new Date().toLocaleTimeString("sr-RS");
+      return;
+    }
+    await loadMatch(event);
+  }catch(err){
+    $("status").textContent = "GREŠKA FEEDA";
+    $("feedStatus").innerHTML = `<span class="error">${esc(err.message)}</span><br><span class="muted">Novi pokušaj za 10 sekundi.</span>`;
+  }
+}
+
+tick();
+setInterval(tick, 10000);
+</script>
+</body>
+</html>
