@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Football Test — Vojvodina vs Zemun</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:transparent;font-family:Arial,Helvetica,sans-serif;color:#fff}
+.wrap{width:min(100%,1100px);margin:20px auto;background:rgba(10,12,18,.90);border:1px solid rgba(255,255,255,.16);border-radius:22px;padding:22px;box-shadow:0 18px 55px rgba(0,0,0,.35)}
+.top{text-align:center;font-size:14px;font-weight:800;letter-spacing:1px;color:#ddd}.live{color:#ff4d5f}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff334d;margin-right:5px}
+.match{display:grid;grid-template-columns:1fr 220px 1fr;align-items:center;gap:15px;margin-top:15px}.team{text-align:center;font-size:21px;font-weight:800}.crest{width:64px;height:64px;object-fit:contain;display:block;margin:0 auto 8px}.score{text-align:center}.nums{font-size:54px;font-weight:900;line-height:1}.status{margin-top:8px;font-size:15px;font-weight:800;color:#ff5265}.sub{color:#aaa;font-size:12px;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}.card{background:rgba(255,255,255,.055);border-radius:14px;padding:14px}.title{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}.stat{display:grid;grid-template-columns:1fr 90px 1fr;align-items:center;margin:9px 0;font-weight:800}.stat div:nth-child(2){text-align:center;color:#ddd}.stat div:last-child{text-align:right}.events{max-height:250px;overflow:auto}.event{padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px}.muted{color:#aaa}.err{color:#ff6978;text-align:center;margin-top:15px}
+@media(max-width:700px){.match{grid-template-columns:1fr 130px 1fr}.team{font-size:16px}.nums{font-size:42px}.crest{width:50px;height:50px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">SERBIA • SUPER LIGA • <span class="live"><span class="dot"></span>AUTO DATA</span></div>
+  <div class="match">
+    <div class="team"><img id="homeLogo" class="crest" alt=""><div>Vojvodina</div></div>
+    <div class="score"><div class="nums"><span id="hs">-</span> : <span id="as">-</span></div><div id="status" class="status">Povezivanje…</div><div id="updated" class="sub">Sofascore feed</div></div>
+    <div class="team"><img id="awayLogo" class="crest" alt=""><div>Zemun</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="title">Statistika</div>
+      <div class="stat"><div>Posed</div><div id="pos">—</div><div>—</div></div>
+      <div class="stat"><div>Šutevi</div><div id="shots">—</div><div>—</div></div>
+      <div class="stat"><div>U okvir</div><div id="sot">—</div><div>—</div></div>
+      <div class="stat"><div>Korneri</div><div id="corners">—</div><div>—</div></div>
+      <div class="stat"><div>Žuti</div><div id="yellow">—</div><div>—</div></div>
+    </div>
+    <div class="card"><div class="title">Live događaji</div><div id="events" class="events"><span class="muted">Čekam podatke…</span></div></div>
+  </div>
+  <div id="err" class="err"></div>
+</div>
+<script>
+const HOME="Vojvodina", AWAY="Zemun";
+let eventId=null, timer=null;
+
+async function getJSON(url){
+  const r=await fetch(url,{cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+function norm(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
+function pickEvent(data){
+  const evs=data.events||[];
+  return evs.find(e=>{
+    const h=norm(e.homeTeam?.name||e.homeTeam?.shortName||e.homeTeam?.nameCode);
+    const a=norm(e.awayTeam?.name||e.awayTeam?.shortName||e.awayTeam?.nameCode);
+    return (h.includes("vojvodina")&&a.includes("zemun"))||(h.includes("zemun")&&a.includes("vojvodina"));
+  });
+}
+async function discover(){
+  const d=new Date();
+  const dates=[new Date(d-86400000),d,new Date(+d+86400000)];
+  for(const x of dates){
+    const ds=x.toISOString().slice(0,10);
+    const data=await getJSON("https://www.sofascore.com/api/v1/sport/football/scheduled-events/"+ds);
+    const ev=pickEvent(data);
+    if(ev){eventId=ev.id; return ev;}
+  }
+  throw new Error("Utakmica Vojvodina–Zemun nije pronađena u Sofascore feedu.");
+}
+function teamObj(ev,home=true){return home?ev.homeTeam:ev.awayTeam}
+function img(id){return id?`https://api.sofascore.com/api/v1/team/${id}/image`:''}
+function statusText(ev){
+  const s=ev.status||{};
+  if(s.type==="inprogress") return s.description || (s.period1EndTimestamp?"LIVE":"LIVE");
+  if(s.type==="finished") return "FT";
+  return s.description || "Nije počelo";
+}
+function statsMap(data){
+  const out={};
+  for(const group of (data.statistics||[])){
+    for(const period of (group.groups||[])){
+      for(const item of (period.statisticsItems||[])) out[item.name]=[item.home,item.away];
+    }
+  }
+  return out;
+}
+function setStat(id,v){
+  const el=document.getElementById(id); if(!el)return;
+  el.textContent=Array.isArray(v)?`${v[0]??"—"}  |  ${v[1]??"—"}`:"—";
+}
+async function refresh(){
+  try{
+    if(!eventId) await discover();
+    const [ev,inc,st]=await Promise.all([
+      getJSON(`https://www.sofascore.com/api/v1/event/${eventId}`),
+      getJSON(`https://www.sofascore.com/api/v1/event/${eventId}/incidents`),
+      getJSON(`https://www.sofascore.com/api/v1/event/${eventId}/statistics`).catch(()=>({}))
+    ]);
+    const e=ev.event;
+    document.getElementById("hs").textContent=e.homeScore?.current ?? e.homeScore?.display ?? 0;
+    document.getElementById("as").textContent=e.awayScore?.current ?? e.awayScore?.display ?? 0;
+    document.getElementById("status").textContent=e.status?.type==="inprogress" ? ((e.time?.current||"")+"' LIVE") : statusText(e);
+    document.getElementById("updated").textContent="Automatsko osvežavanje • "+new Date().toLocaleTimeString();
+    const h=teamObj(e,true), a=teamObj(e,false);
+    document.getElementById("homeLogo").src=img(h.id); document.getElementById("awayLogo").src=img(a.id);
+    const sm=statsMap(st);
+    setStat("pos",sm["Ball possession"]); setStat("shots",sm["Total shots"]); setStat("sot",sm["Shots on target"]); setStat("corners",sm["Corner kicks"]);
+    let yH=0,yA=0;
+    (inc.incidents||[]).forEach(x=>{if(x.incidentType==="card" && (x.incidentClass==="yellow"||x.incidentClass==="yellowRed")){if(x.isHome)yH++;else yA++;}});
+    setStat("yellow",[yH,yA]);
+    const arr=(inc.incidents||[]).filter(x=>["goal","card","substitution"].includes(x.incidentType)).sort((a,b)=>(b.time||0)-(a.time||0)).slice(0,20);
+    document.getElementById("events").innerHTML=arr.length?arr.map(x=>{
+      let icon=x.incidentType==="goal"?"⚽":x.incidentType==="card"?"🟨":"↕";
+      let name=x.player?.name||x.assist1?.name||x.substitution?.in?.name||"";
+      return `<div class="event"><b>${x.time||""}'</b> ${icon} ${name}</div>`;
+    }).join(""):"<span class='muted'>Nema događaja.</span>";
+    document.getElementById("err").textContent="";
+  }catch(err){
+    document.getElementById("err").textContent=err.message;
+  }
+}
+refresh(); timer=setInterval(refresh,10000);
+</script>
+</body>
+</html>
