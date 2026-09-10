@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Football Live Overlay</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:transparent;font-family:Arial,Helvetica,sans-serif;color:#fff}
+body{display:flex;align-items:center;justify-content:center}
+#app{width:100%;max-width:900px;padding:18px}
+.card{background:rgba(8,10,14,.94);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.top{font-size:12px;letter-spacing:2px;opacity:.65;text-align:center;margin-bottom:14px}
+.match{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px}
+.team{text-align:center;font-weight:800;font-size:20px}
+.team img{width:64px;height:64px;object-fit:contain;display:block;margin:0 auto 8px}
+.score{text-align:center}
+.scoreline{font-size:46px;font-weight:900;line-height:1}
+.status{margin-top:7px;font-size:14px;font-weight:700;opacity:.9}
+.stats{margin-top:22px;border-top:1px solid rgba(255,255,255,.1);padding-top:15px}
+.stat{display:grid;grid-template-columns:1fr 100px 1fr;align-items:center;gap:8px;margin:9px 0}
+.val{font-weight:800;font-size:16px}
+.home{text-align:right}.away{text-align:left}.label{text-align:center;font-size:11px;opacity:.58;text-transform:uppercase;letter-spacing:.7px}
+.bar{height:5px;background:rgba(255,255,255,.12);border-radius:10px;margin-top:4px;overflow:hidden}
+.fill{height:100%;width:0;background:#fff}
+.message{text-align:center;padding:28px 10px;font-size:18px;font-weight:700}
+.small{text-align:center;font-size:11px;opacity:.45;margin-top:14px}
+.err{font-size:12px;opacity:.7;text-align:center;margin-top:10px}
+@media(max-width:600px){.team{font-size:15px}.team img{width:48px;height:48px}.scoreline{font-size:36px}.stat{grid-template-columns:1fr 78px 1fr}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="card">
+    <div class="top">FOOTBALL • AUTO LIVE • SCORE + STATS</div>
+    <div id="content" class="message">Tražim LIVE utakmicu...</div>
+    <div id="small" class="small"></div>
+  </div>
+</div>
+
+<script>
+const leagues = [
+  "eng.1","esp.1","ita.1","ger.1","fra.1","ned.1","bel.1","por.1",
+  "tur.1","gre.1","sco.1","usa.1","mex.1","bra.1","arg.1","chi.1",
+  "uru.1","col.1","ecu.1","par.1","bol.1","per.1","ksa.1","sau.1",
+  "jpn.1","kor.1","aus.1","swe.1","nor.1","den.1","pol.1","cze.1",
+  "aut.1","sui.1","cro.1","srb.1","rou.1","bul.1","cyp.1","isr.1",
+  "uefa.champions","uefa.europa","uefa.europa.conf","conmebol.libertadores"
+];
+
+const content = document.getElementById("content");
+const small = document.getElementById("small");
+
+function esc(s){
+  return String(s ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+}
+
+async function getJSON(url){
+  const r = await fetch(url + (url.includes("?")?"&":"?") + "_=" + Date.now(), {cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+
+function isLive(ev){
+  const t = ev?.competitions?.[0]?.status?.type;
+  const state = String(t?.state || "").toLowerCase();
+  return state === "in" || state === "inprogress" || t?.completed === false && (t?.shortDetail||"").match(/\d+['’]/);
+}
+
+async function findLive(){
+  const results = await Promise.allSettled(leagues.map(async league=>{
+    const data = await getJSON(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard`);
+    return {league, events:data.events||[]};
+  }));
+  for(const r of results){
+    if(r.status!=="fulfilled") continue;
+    const ev = r.value.events.find(isLive);
+    if(ev) return {league:r.value.league,event:ev};
+  }
+  return null;
+}
+
+function teamsFromEvent(ev){
+  const c = ev.competitions?.[0];
+  const arr = c?.competitors || [];
+  let home = arr.find(x=>x.homeAway==="home") || arr[0];
+  let away = arr.find(x=>x.homeAway==="away") || arr[1];
+  return {home,away};
+}
+
+function normalizeStats(summary, ev){
+  const out = {};
+  const bt = summary?.boxscore?.teams || [];
+  for(const side of bt){
+    const ha = side.homeAway;
+    const stats = side.statistics || [];
+    out[ha] = {};
+    for(const s of stats){
+      const key = String(s.name||s.label||"").toLowerCase().replace(/[\s_-]/g,"");
+      const label = String(s.label||s.name||"").toLowerCase();
+      const value = s.displayValue ?? s.value;
+      if(value==null) continue;
+      if(label.includes("possession") || key.includes("possession")) out[ha].possession=value;
+      else if(label.includes("total shot") || key.includes("totalshots")) out[ha].shots=value;
+      else if(label.includes("shot on target") || label.includes("shots on target") || key.includes("shotsontarget")) out[ha].onTarget=value;
+      else if(label.includes("corner") || key.includes("corner")) out[ha].corners=value;
+      else if(label.includes("foul") || key.includes("fouls")) out[ha].fouls=value;
+      else if(label.includes("yellow") || key.includes("yellow")) out[ha].yellow=value;
+      else if(label.includes("red") || key.includes("red")) out[ha].red=value;
+    }
+  }
+
+  // Some ESPN feeds put statistics directly under the competition.
+  const cs = ev?.competitions?.[0]?.competitors || [];
+  for(const comp of cs){
+    const ha=comp.homeAway;
+    if(!out[ha]) out[ha]={};
+    for(const s of (comp.statistics||[])){
+      const label=String(s.label||s.name||"").toLowerCase();
+      const value=s.displayValue ?? s.value;
+      if(value==null) continue;
+      if(label.includes("possession")) out[ha].possession=value;
+      else if(label.includes("total shot")) out[ha].shots=value;
+      else if(label.includes("shot on target") || label.includes("shots on target")) out[ha].onTarget=value;
+      else if(label.includes("corner")) out[ha].corners=value;
+      else if(label.includes("foul")) out[ha].fouls=value;
+      else if(label.includes("yellow")) out[ha].yellow=value;
+      else if(label.includes("red")) out[ha].red=value;
+    }
+  }
+  return out;
+}
+
+function pickStat(stats, key, home, away){
+  const h=stats.home?.[key], a=stats.away?.[key];
+  if(h==null && a==null) return null;
+  return {h:h??"-",a:a??"-"};
+}
+
+function statRow(label, pair, percent=false){
+  if(!pair) return "";
+  let hn=String(pair.h).replace("%",""), an=String(pair.a).replace("%","");
+  let h=parseFloat(hn), a=parseFloat(an);
+  let hp=0, ap=0;
+  if(Number.isFinite(h)&&Number.isFinite(a)&&(h+a)>0){ hp=h/(h+a)*100; ap=a/(h+a)*100; }
+  return `<div class="stat">
+    <div class="home"><div class="val">${esc(pair.h)}${percent&&!String(pair.h).includes("%")?"%":""}</div><div class="bar"><div class="fill" style="width:${hp}%"></div></div></div>
+    <div class="label">${esc(label)}</div>
+    <div class="away"><div class="val">${esc(pair.a)}${percent&&!String(pair.a).includes("%")?"%":""}</div><div class="bar"><div class="fill" style="width:${ap}%"></div></div></div>
+  </div>`;
+}
+
+async function render(found){
+  const ev=found.event, league=found.league;
+  const {home,away}=teamsFromEvent(ev);
+  const hs=home?.score ?? "0", as=away?.score ?? "0";
+  const clock=ev?.competitions?.[0]?.status?.displayClock || ev?.competitions?.[0]?.status?.shortDetail || "LIVE";
+  const hname=home?.team?.displayName || home?.team?.shortDisplayName || "Home";
+  const aname=away?.team?.displayName || away?.team?.shortDisplayName || "Away";
+  const hlogo=home?.team?.logo || "";
+  const alogo=away?.team?.logo || "";
+
+  let summary=null;
+  try{
+    summary=await getJSON(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/summary?event=${encodeURIComponent(ev.id)}`);
+  }catch(e){}
+
+  const stats=normalizeStats(summary,ev);
+  const rows=[
+    statRow("Posed",pickStat(stats,"possession",home,away),true),
+    statRow("Šutevi",pickStat(stats,"shots",home,away)),
+    statRow("U okvir",pickStat(stats,"onTarget",home,away)),
+    statRow("Korneri",pickStat(stats,"corners",home,away)),
+    statRow("Faulovi",pickStat(stats,"fouls",home,away))
+  ].join("");
+
+  content.innerHTML=`
+    <div class="match">
+      <div class="team">${hlogo?`<img src="${esc(hlogo)}" onerror="this.style.display='none'">`:''}${esc(hname)}</div>
+      <div class="score"><div class="scoreline">${esc(hs)} - ${esc(as)}</div><div class="status">${esc(clock)}</div></div>
+      <div class="team">${alogo?`<img src="${esc(alogo)}" onerror="this.style.display='none'">`:''}${esc(aname)}</div>
+    </div>
+    <div class="stats">${rows || '<div class="message" style="padding:18px 5px;font-size:14px">Rezultat radi, ali ovaj ESPN feed trenutno ne šalje detaljne statistike za ovu utakmicu.</div>'}</div>`;
+  small.textContent=`ESPN • ${esc(league)} • automatsko osvežavanje`;
+}
+
+async function update(){
+  try{
+    small.textContent="Tražim LIVE utakmicu...";
+    const found=await findLive();
+    if(!found){
+      content.innerHTML='<div class="message">NEMA LIVE MEČA</div>';
+      small.textContent="ESPN trenutno ne vraća LIVE fudbalski meč. Ponovni pokušaj za 10 sekundi.";
+      return;
+    }
+    await render(found);
+  }catch(e){
+    content.innerHTML='<div class="message">Greška pri učitavanju podataka</div><div class="err">'+esc(e.message)+'</div>';
+    small.textContent="Ponovni pokušaj za 10 sekundi.";
+  }
+}
+update();
+setInterval(update,10000);
+</script>
+</body>
+</html>
