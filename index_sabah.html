@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manchester United vs Sabah • Live Overlay</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:#07080b;color:#fff;font-family:Arial,Helvetica,sans-serif}
+body{overflow:auto}
+body:before{
+  content:"";position:fixed;inset:0;z-index:-2;
+  background:
+    radial-gradient(circle at 50% 35%,rgba(190,0,0,.30),transparent 38%),
+    linear-gradient(135deg,#050608 0%,#190306 42%,#08090c 72%,#150003 100%);
+}
+body:after{
+  content:"";position:fixed;inset:0;z-index:-1;opacity:.18;
+  background:
+    linear-gradient(115deg,transparent 0 35%,#e00000 35.2% 35.5%,transparent 35.7% 100%),
+    linear-gradient(65deg,transparent 0 70%,#e00000 70.2% 70.5%,transparent 70.7% 100%);
+}
+#app{width:100%;max-width:1180px;margin:auto;padding:18px}
+.card{background:rgba(5,7,10,.88);border:1px solid rgba(255,255,255,.12);border-radius:20px;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.5)}
+.header{text-align:center;padding:16px 15px 11px;background:linear-gradient(180deg,rgba(170,0,0,.34),rgba(0,0,0,0))}
+.comp{font-size:13px;font-weight:900;letter-spacing:2px;text-transform:uppercase}
+.round{font-size:11px;opacity:.62;margin-top:5px;letter-spacing:1.5px}
+.scoreboard{display:grid;grid-template-columns:1fr 270px 1fr;align-items:center;gap:10px;padding:10px 30px 20px}
+.team{text-align:center;font-weight:900;font-size:23px}
+.team img{width:76px;height:76px;object-fit:contain;display:block;margin:0 auto 8px}
+.score{text-align:center}.scoreline{font-size:54px;font-weight:1000;line-height:1}
+.clock{font-size:17px;font-weight:900;margin-top:9px;color:#ff3b3b}.pre{color:#aaa}
+.live{display:inline-block;margin-top:7px;padding:4px 10px;border-radius:20px;background:#d40000;font-size:10px;font-weight:900;letter-spacing:1px}
+.grid{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:10px;padding:0 15px 15px}
+.panel{background:rgba(0,0,0,.48);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:13px}
+.title{font-size:11px;font-weight:900;letter-spacing:1.3px;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:9px;margin-bottom:9px}
+.lineup{font-size:12px;line-height:1.62}.lineup b{color:#ff3030}.away b{color:#62a9ff}
+.player{display:flex;justify-content:space-between;gap:7px;border-bottom:1px solid rgba(255,255,255,.045);padding:2px 0}.num{opacity:.45;min-width:22px}.pos{opacity:.48;font-size:10px}
+.stat{display:grid;grid-template-columns:1fr 86px 1fr;align-items:center;gap:7px;margin:10px 0}.hv{text-align:right;font-weight:900}.av{text-align:left;font-weight:900}.sl{text-align:center;font-size:10px;opacity:.62;text-transform:uppercase}.bar{height:4px;background:#20242b;border-radius:9px;margin-top:4px;overflow:hidden}.fillh{height:100%;background:#e40018;width:0}.filla{height:100%;background:#2f75ff;width:0}
+.event{font-size:11px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}.event b{color:#ff3535}.muted{text-align:center;opacity:.5;font-size:11px;padding:15px 0}
+.footer{text-align:center;padding:10px;font-size:10px;opacity:.38;letter-spacing:1px}
+@media(max-width:850px){.scoreboard{grid-template-columns:1fr 190px 1fr;padding-left:12px;padding-right:12px}.grid{grid-template-columns:1fr}.team{font-size:18px}.scoreline{font-size:43px}}
+</style>
+</head>
+<body>
+<div id="app"><div class="card">
+<div class="header">
+  <div class="comp">UEFA CHAMPIONS LEAGUE</div>
+  <div class="round">LEAGUE PHASE • MATCHDAY 1</div>
+</div>
+<div class="scoreboard">
+  <div class="team"><img id="hlogo" src="https://a.espncdn.com/i/teamlogos/soccer/500/360.png"><div>Manchester United</div></div>
+  <div class="score"><div class="scoreline" id="score">0 - 0</div><div id="clock" class="clock pre">21:00 CET</div><div id="live" class="live" style="display:none">LIVE</div></div>
+  <div class="team"><img id="alogo" src="https://assets.footylogos.com/logos/sabah-fk/sabah-fk-logo-footylogos.svg"><div>Sabah</div></div>
+</div>
+
+<div class="grid">
+  <div class="panel"><div class="title">Manchester United • Sastav</div><div id="homeLineup" class="lineup"></div></div>
+  <div class="panel"><div class="title">Statistika uživo</div><div id="stats"><div class="muted">Statistika će se pojaviti kada ESPN pošalje podatke.</div></div></div>
+  <div class="panel"><div class="title">Sabah • Sastav</div><div id="awayLineup" class="lineup away"></div></div>
+  <div class="panel"><div class="title">Tok utakmice</div><div id="events"><div class="muted">Čekam početak utakmice...</div></div></div>
+  <div class="panel"><div class="title">Status</div><div id="status" class="muted">Učitavam podatke...</div></div>
+  <div class="panel"><div class="title">Info</div><div class="muted">Manchester United vs Sabah<br>Old Trafford • 10.09.2026</div></div>
+</div>
+<div class="footer">AUTO DATA • ESPN • SINGLE MATCH OVERLAY</div>
+</div></div>
+
+<script>
+const EVENT_ID="74165900";
+const LEAGUE="uefa.champions";
+const API=`https://site.api.espn.com/apis/site/v2/sports/soccer/${LEAGUE}/summary?event=${EVENT_ID}`;
+
+const probableHome=[
+["1","Senne Lammens","GK"],["3","Noussair Mazraoui","DEF"],["6","Lisandro Martínez","DEF"],["15","Leny Yoro","DEF"],["2","Diogo Dalot","DEF"],
+["18","Youri Tielemans","MID"],["37","Kobbie Mainoo","MID"],["10","Matheus Cunha","MID"],["8","Bruno Fernandes","MID"],["19","Bryan Mbeumo","MID"],["30","Benjamin Šeško","FWD"]];
+const probableAway=[
+["92","Maksym Pokatilov","GK"],["27","Tymoteusz Puchacz","DEF"],["5","Elvin Dashdamirov","DEF"],["3","Vincent Solvet","DEF"],["17","Mütallimov","DEF"],
+["7","Rakhmonaliev","MID"],["13","Luka Lepinjica","MID"],["11","Christian Parris","MID"],["10","Namiq Isaev","MID"],["21","Veljko Simić","MID"],["20","Kasey Palmer? / Mickels","FWD"]];
+
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function drawLineup(el,arr){el.innerHTML=arr.map(p=>`<div class="player"><span><span class="num">${esc(p[0])}</span> ${esc(p[1])}</span><span class="pos">${esc(p[2])}</span></div>`).join("")}
+drawLineup(document.getElementById("homeLineup"),probableHome);
+drawLineup(document.getElementById("awayLineup"),probableAway);
+
+async function getData(){
+ const r=await fetch(API+"&_="+Date.now(),{cache:"no-store"}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json();
+}
+function val(stats,patterns){
+ for(const s of stats||[]){
+  const l=String(s.label||s.name||"").toLowerCase();
+  if(patterns.some(p=>l.includes(p))) return s.displayValue??s.value;
+ }
+ return null;
+}
+function pairStat(teams,patterns){
+ const h=teams.find(x=>x.homeAway==="home")?.statistics||[];
+ const a=teams.find(x=>x.homeAway==="away")?.statistics||[];
+ return [val(h,patterns),val(a,patterns)];
+}
+function statRow(label,pair,percent=false){
+ if(pair[0]==null&&pair[1]==null)return "";
+ let h=parseFloat(String(pair[0]).replace("%","")),a=parseFloat(String(pair[1]).replace("%",""));
+ let hp=0,ap=0;if(isFinite(h)&&isFinite(a)&&(h+a)>0){hp=h/(h+a)*100;ap=a/(h+a)*100}
+ return `<div class="stat"><div class="hv">${esc(pair[0]??"-")} ${percent&&!String(pair[0]??"").includes("%")?"%":""}<div class="bar"><div class="fillh" style="width:${hp}%"></div></div></div><div class="sl">${esc(label)}</div><div class="av">${esc(pair[1]??"-")} ${percent&&!String(pair[1]??"").includes("%")?"%":""}<div class="bar"><div class="filla" style="width:${ap}%"></div></div></div></div>`;
+}
+async function update(){
+ try{
+  const d=await getData(), c=d.header?.competitions?.[0]||d.competitions?.[0], comps=d.boxscore?.teams||[];
+  const status=c?.status?.type||{};
+  const competitors=c?.competitors||[];
+  const h=competitors.find(x=>x.homeAway==="home"), a=competitors.find(x=>x.homeAway==="away");
+  if(h?.team?.logo)document.getElementById("hlogo").src=h.team.logo;
+  if(a?.team?.logo)document.getElementById("alogo").src=a.team.logo;
+  if(h&&a)document.getElementById("score").textContent=`${h.score??0} - ${a.score??0}`;
+  const clock=status.displayClock||status.shortDetail||"21:00 CET";
+  document.getElementById("clock").textContent=clock;
+  const isLive=["in","inprogress"].includes(String(status.state).toLowerCase());
+  document.getElementById("live").style.display=isLive?"inline-block":"none";
+  document.getElementById("status").textContent=status.detail||status.shortDetail||"Podaci učitani.";
+  const statsTeams=comps.length?comps:competitors;
+  const rows=[
+   statRow("Posed",pairStat(statsTeams,["possession"]),true),
+   statRow("Šutevi",pairStat(statsTeams,["total shots","shots"])),
+   statRow("U okvir",pairStat(statsTeams,["shots on target","shot on target"])),
+   statRow("Korneri",pairStat(statsTeams,["corner"])),
+   statRow("Faulovi",pairStat(statsTeams,["foul"])),
+   statRow("Žuti",pairStat(statsTeams,["yellow"])),
+   statRow("Crveni",pairStat(statsTeams,["red"]))
+  ].join("");
+  document.getElementById("stats").innerHTML=rows||'<div class="muted">ESPN trenutno ne šalje statistiku za ovaj meč.</div>';
+
+  const plays=d.commentary||d.plays||[];
+  if(plays.length){
+   document.getElementById("events").innerHTML=plays.slice(-10).reverse().map(p=>{
+    const t=p.clock?.displayValue||p.period?.displayValue||"";
+    return `<div class="event"><b>${esc(t)}</b> ${esc(p.text||p.shortText||"")}</div>`;
+   }).join("");
+  }
+ }catch(e){
+  document.getElementById("status").textContent="Čekam ESPN podatke • "+e.message;
+ }
+}
+update();setInterval(update,10000);
+</script>
+</body>
+</html>
